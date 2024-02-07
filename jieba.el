@@ -249,7 +249,7 @@
 (provide 'jieba)
 
 (cl-eval-when (load eval)
-  (require 'jieba-node)
+  ;; (require 'jieba-node)
   (require 'jieba-python))
 
 ;;; jieba.el ends here
