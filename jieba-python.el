@@ -1,8 +1,8 @@
-;;; jieba-node.el  --- nodejieba backend  -*- lexical-binding: t -*-
+;;; jieba-python.el  --- python jieba backend  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2019 Zhu Zihao
+;; Copyright (C) 2024 FingerKnight
 
-;; Author: Zhu Zihao <all_but_last@163.com>
+;; Author: FingerKnight <mrdust1880@outlook.com>
 ;; Keywords: chinese
 
 ;; This file is NOT part of GNU Emacs.
@@ -29,10 +29,6 @@
 (require 'jieba)
 (require 'jsonrpc)
 
-;;; JSONRPC setup
-
-(defvar jieba--current-node-conn nil)
-
 (defun jieba--json-read-string (s)
   (if (fboundp 'json-parse-string)
       (json-parse-string s
@@ -44,10 +40,14 @@
           (json-null nil))
       (json-read-from-string s))))
 
-(defclass jieba-node-connection (jsonrpc-process-connection) ()
+;;; JSONRPC setup
+
+(defvar jieba--current-python-conn nil)
+
+(defclass jieba-python-connection (jsonrpc-process-connection) ()
   "A connection based on stdio to contact with jieba server.")
 
-(cl-defmethod jsonrpc-connection-send ((conn jieba-node-connection)
+(cl-defmethod jsonrpc-connection-send ((conn jieba-python-connection)
                                        &rest args
                                        &key method &allow-other-keys)
   "Override send method, because we just send JSON without HTTP headers."
@@ -61,9 +61,9 @@
      (jsonrpc--process conn)
      json)))
 
-(cl-defmethod initialize-instance ((conn jieba-node-connection) _slots)
+(cl-defmethod initialize-instance ((conn jieba-python-connection) _slots)
   (cl-call-next-method)
-  ;; Set a new process filter for `jieba-node-connection'.
+  ;; Set a new process filter for `jieba-python-connection'.
   ;; Because our messages don't contain HTTP headers.
   (let ((proc (jsonrpc--process conn)))
     (when proc
@@ -89,43 +89,46 @@
               (jsonrpc-connection-receive conn
                                           json-message))))))))
 
-(defun jieba--node-connect ()
-  "Connect to our nodejieba server."
+(defun jieba--python-connect ()
+  "Connect to our python jieba server."
   (let* ((name "JIEBA-SERVER")
          (default-directory (jieba--current-dir))
-         (conn (jieba-node-connection
+         (service (alist-get 'python jieba-server-alist))
+         (conn (jieba-python-connection
                 :process (lambda ()
-                           (make-process
-                            :name name
-                            :command jieba-server-start-args
-                            :coding 'utf-8-emacs-unix
+                           (open-network-stream
+                            name
+                            name
+                            (car service)
+                            (cdr service)
                             :noquery t
-                            :connection-type 'pipe
-                            :stderr (get-buffer-create
-                                     (format "*%s stderr*" name)))))))
+                            :coding 'utf-8-emacs-unix
+                            )
+
+                           ))))
     ;; Ask server to load default dict.
     (jsonrpc-notify conn :hello nil)
-    (setq jieba--current-node-conn conn)))
+    (setq jieba--current-python-conn conn)))
 
 ;;; Backend implementation
 
-(cl-defmethod jieba--initialize-backend ((_backend (eql node)))
-  (jieba--node-connect))
+(cl-defmethod jieba--initialize-backend ((_backend (eql python)))
+  (jieba--python-connect))
 
-(cl-defmethod jieba--shutdown-backend ((_backend (eql node)))
-  (jsonrpc-shutdown jieba--current-node-conn))
+(cl-defmethod jieba--shutdown-backend ((_backend (eql python)))
+  (jsonrpc-shutdown jieba--current-python-conn))
 
-(cl-defmethod jieba--backend-available? ((_backend (eql node)))
-  (and (cl-typep jieba--current-node-conn 'jieba-node-connection)
-       (jsonrpc-running-p jieba--current-node-conn)))
+(cl-defmethod jieba--backend-available? ((_backend (eql python)))
+  (and (cl-typep jieba--current-python-conn 'jieba-python-connection)
+       (jsonrpc-running-p jieba--current-python-conn)))
 
-(cl-defmethod jieba-load-dict ((_backend (eql node)) dicts)
-  (jsonrpc-async-request jieba--current-node-conn
+(cl-defmethod jieba-load-dict ((_backend (eql python)) dicts)
+  (jsonrpc-async-request jieba--current-python-conn
                          :loadDict (vconcat dicts)))
 
-(cl-defmethod jieba-do-split ((_backend (eql node)) str)
-  (jsonrpc-request jieba--current-node-conn :split str))
+(cl-defmethod jieba-do-split ((_backend (eql python)) str)
+  (jsonrpc-request jieba--current-python-conn :split str))
 
-(provide 'jieba-node)
+(provide 'jieba-python)
 
-;;; jieba-node.el ends here
+;;; jieba-python.el ends here

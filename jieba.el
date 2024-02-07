@@ -48,6 +48,12 @@
   :type 'list
   :group 'jieba)
 
+(defcustom jieba-server-alist
+  '((python . ("127.0.0.1" . 58291)))
+  ""
+  :type 'alist
+  :group 'jieba)
+
 (defcustom jieba-split-algorithm 'mix
   ""
   :type '(choice (const :tag "MP Segment Algorithm" mp)
@@ -97,7 +103,8 @@
 (defun jieba-ensure (&optional interactive-restart?)
   (interactive "P")
   (if (not (jieba--backend-available? jieba-current-backend))
-      (jieba--initialize-backend jieba-current-backend)
+      (progn
+        (jieba--initialize-backend jieba-current-backend))
     (when (and
            interactive-restart?
            (y-or-n-p
@@ -242,6 +249,7 @@
 (provide 'jieba)
 
 (cl-eval-when (load eval)
-  (require 'jieba-node))
+  (require 'jieba-node)
+  (require 'jieba-python))
 
 ;;; jieba.el ends here

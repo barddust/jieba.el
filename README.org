@@ -1,65 +1,34 @@
 #+TITLE: Jieba.el -- 在Emacs中使用jieba中文分词
-* 简介
 
-众所周知, Emacs并没有内置中文分词系统, 以至于 =forward-word= 和 =backward-word=
-以及 =kill-word= 等以单词为单位的操作只能粗暴的标点符号进行确定所谓"词汇",
-(其实是中文里的句子).
+* 前言
 
-=jieba.el= 利用[[https://github.com/yanyiwu/nodejieba][nodejieba]]对buffer中的中文句子进行分割, 并且增强了上述以词为单位的
-操作, 使使用Emacs处理中文文本的体验更加流畅.
+本项目 fork 自[[https://github.com/cireu/jieba.el][该项目]]，所作修改如下：
 
-注: 该图片文字来源于[[https://zh.wikipedia.org/zh-cn/GNU%25E9%2580%259A%25E7%2594%25A8%25E5%2585%25AC%25E5%2585%25B1%25E8%25AE%25B8%25E5%258F%25AF%25E8%25AF%2581][维基百科]], 遵循CC BY-SA 3.0条款使用
-
-[[file:screenshot.gif]]
+1. 原项目使用 node jieba, 该项目使用 python jieba
+2. 原项目每一个 buffer 会启用一个 jieba server, 本项目只需启用一个，每个 buffer 启用的是 client.
 
 * 安装方式
 
-** 安装nodejieba
-执行以下命令安装nodejieba
-
+** 安装依赖
 #+BEGIN_SRC sh
-npm install
+pip install jieba
 #+END_SRC
 
 ** 安装jieba.el
 
-从[[https://elpa.gnu.org/packages/][GNU ELPA]]安装jieba.el的依赖[[https://elpa.gnu.org/packages/jsonrpc.html][jsonrpc]],
-然后将jieba.el放入你emacs的 =load-path= 中, 在 =.emacs= 文件中写入
+jieba.el 依赖于 jsonrpc, 而目前版本(29.2)的 Emacs 已经内置该模块
+
+把 jieba.el 目录放入emacs的 =load-path= 中, 在 =.emacs= 文件中写入
 
 #+BEGIN_SRC elisp
 (require 'jieba)
 (jieba-mode)
 #+END_SRC
 
-你也可以使用 =use-package=
-
-#+BEGIN_SRC elisp
-(use-package jieba
-  :load-path "/path/to/jieba"
-  :commands jieba-mode
-  :init (jieba-mode))
-#+END_SRC
-
 * 使用方式
 
-启用 =jieba-mode= 后, =jieba.el= 会自动重新映射 =forward-word=, =backward-word=,
-=kill-word=, =backward-kill-word=, 到对应的jieba增强版本上.
+最重要的一点，需要提前手动提前启用 ~jieba-server.py~.
 
-你也可以自行定义 =jieba-mode-map= 来修改这些操作的按键绑定
+想修改的话可以改动 ~jieba-python.el~ 中的 ~jieba--python-connect~ 函数，在 ~:process~ 的 lambda 中检查，若没有启动 server，则调用子进程启动。检查方式可以用 ~ps + grep~. 我嫌麻烦懒得弄了，直接把 ~python /path/to/jieba.el/jieba-server.py &~ 写进了系统启动项里面。
 
-| 按键名                     | Action                   |
-|----------------------------+--------------------------|
-| =jieba-forward-word=       | 向前移动一个中英文单词   |
-| =jibea-bacward-word=       | 向后移动一个中英文单词   |
-| =jieba-kill-word=          | 删除光标后的一个中文单词 |
-| =jieba-backward-kill-word= | 删除光标前的一个中文单词 |
-| =jieba-mark-word=          | 选中光标下的一个中文单词 |
-
-* 协助开发
-
-欢迎提交PR和Issue report.
-
-* 相关项目
-
-- [[https://github.com/xuchunyang/chinese-word-at-point.el][chinese-word-at-point.el]] :: 另一个使用jieba分词进行中文分词的package.
-- [[https://github.com/tumashu/pyim][pyim]] :: 一个Emacs内部的中文输入法, 提供了按其输入词库进行分词的功能.
+使用方式详见原项目的 [[https://github.com/cireu/jieba.el?tab=readme-ov-file#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F][README]].
