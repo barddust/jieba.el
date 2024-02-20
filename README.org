@@ -22,12 +22,13 @@ jieba.el 依赖于 jsonrpc, 而目前版本(29.2)的 Emacs 已经内置该模块
 
 #+BEGIN_SRC elisp
 (require 'jieba)
+(setq jieba-current-backend 'python)
 (jieba-mode)
 #+END_SRC
 
 * 使用方式
 
-最重要的一点，需要提前手动提前启用 ~jieba-server.py~.
+最重要的一点，需要提前手动启用 ~jieba-server.py~.
 
 想修改的话可以改动 ~jieba-python.el~ 中的 ~jieba--python-connect~ 函数，在 ~:process~ 的 lambda 中检查，若没有启动 server，则调用子进程启动。检查方式可以用 ~ps + grep~. 我嫌麻烦懒得弄了，直接把 ~python /path/to/jieba.el/jieba-server.py &~ 写进了系统启动项里面。
 
