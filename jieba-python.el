@@ -95,14 +95,16 @@
          (default-directory (jieba--current-dir))
          (service (alist-get 'python jieba-server-alist))
          (conn (jieba-python-connection
-                :process (open-network-stream
-                          name
-                          name
-                          (car service)
-                          (cdr service)
-                          :noquery t
-                          :coding 'utf-8-emacs-unix))))
+                :process (lambda ()
+                           (open-network-stream
+                            name
+                            name
+                            (car service)
+                            (cdr service)
+                            :noquery t
+                            :coding 'utf-8-emacs-unix)))))
     ;; Ask server to load default dict.
+    (message "aaa")
     (jsonrpc-notify conn :hello nil)
     (setq jieba--current-python-conn conn)))
 
