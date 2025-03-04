@@ -2,10 +2,10 @@
 
 ;; Copyright (C) 2019 Zhu Zihao
 
-;; Author: Zhu Zihao <all_but_last@163.com>
-;; URL: https://github.com/cireu/jieba.el
-;; Version: 0.0.1
-;; Package-Requires: ((emacs "25.2") (jsonrpc "1.0.7"))
+;; Author: bardust0@outlook.com
+;; URL: https://github.com/barddust/jieba.el
+;; Version: 1.0.0
+;; Package-Requires: ((emacs "25.2") (jsonrpc "1.0.7") (websocket "1.15"))
 ;; Keywords: chinese
 
 ;; This file is NOT a part of GNU Emacs.
@@ -42,49 +42,39 @@
   :group 'chinese
   :prefix "jieba-")
 
-(defcustom jieba-server-start-args
-  `("node" "simple-jieba-server.js")
-  ""
-  :type 'list
-  :group 'jieba)
-
 (defcustom jieba-server-alist
-  '((python . ("127.0.0.1" . 58291)))
+  '((python . ("127.0.0.1" . 58291))
+    (node . 2932))
   ""
   :type 'alist
   :group 'jieba)
 
-(defcustom jieba-split-algorithm 'mix
-  ""
-  :type '(choice (const :tag "MP Segment Algorithm" mp)
-                 (const :tag "HMM Segment Algorithm" hmm)
-                 (const :tag "Mix Segment Algorithm" mix)))
-
-(defcustom jieba-use-cache t
-  "Use cache to cache the result of segmentation if non-nil."
-  :type 'boolean
+(defcustom jieba-current-backend 'python
+  "The Jieba backend in using."
+  :type 'symbol
   :group 'jieba)
 
-(defcustom jieba-current-backend 'node
-  "The Jieba backend in using."
+(defcustom jieba-data-dir (expand-file-name "jieba" user-emacs-directory)
+  "Directory to save jieba cache and custom build scripts."
+  :type 'string
+  :group 'jieba)
+
+(defcustom jieba-build-server-automatically nil
+  "Try to run build server script after enabling jieba-mode."
+  :type 'boolean
   :group 'jieba)
 
 ;;; Utils
 
 (defconst jieba--current-dir
-  (let* ((this-file (cond
-                     (load-in-progress load-file-name)
-                     ((and (boundp 'byte-compile-current-file)
-                           byte-compile-current-file)
-                      byte-compile-current-file)
-                     (t (buffer-file-name))))
-         (dir (file-name-directory this-file)))
-    dir)
+  (file-name-directory
+   (cond
+    (load-in-progress load-file-name)
+    ((and (boundp 'byte-compile-current-file)
+          byte-compile-current-file)
+     byte-compile-current-file)
+    (t (buffer-file-name))))
   "Directory of jieba.")
-
-(defun jieba--current-dir ()
-  "Return the directory of jieba."
-  jieba--current-dir)
 
 ;;; Backend Access API
 
@@ -118,24 +108,36 @@
       (error "[JIEBA] Current backend: %s is not available!"
              jieba-current-backend)))
 
-;;; Data Cache
+(defun jieba--server-built-p (backend)
+  "Check if Server has been built for BACKEND."
+  (let ((flag (expand-file-name
+               (format ".build.%s" backend)
+               jieba-data-dir)))
+    (file-exists-p flag)))
 
-(defvar jieba--cache (make-hash-table :test #'equal))
+(defun jieba-build-server (&optional all-p)
+  (interactive "P")
+  (let* ((servers (map-keys jieba-server-alist))
+         (backends
+          (if all-p servers
+            (cl-remove-duplicates
+             (completing-read-multiple
+                       "Backend: "
+                       servers
+                       nil t)))))
+    (dolist (backend backends)
+      (unless (jieba--server-built-p backend)
+        (let* ((script-name (format "%s.build.sh" backend))
+               (sys-script (expand-file-name script-name
+                                             jieba--current-dir))
+               (user-script (expand-file-name script-name jieba-data-dir)))
 
-(defun jieba--cache-gc ())
-
-(cl-defmethod jieba-do-split :around ((_backend t) string)
-  "Access cache if used."
-  (let ((not-found (make-symbol "hash-not-found"))
-        result)
-    (if (not jieba-use-cache)
-        (cl-call-next-method)
-      (setq result (gethash string jieba--cache not-found))
-      (if (eq not-found result)
-          (prog1 (setq result (cl-call-next-method))
-            (puthash string result jieba--cache))
-        result))))
-
+          (cl-loop for script in (list (expand-file-name script-name jieba--current-dir)
+                                       (expand-file-name script-name jieba-data-dir))
+                   when (file-exists-p script) do
+                   (progn (async-shell-command (format "sh %s" script))
+                          (with-temp-file (expand-file-name (format ".build.%s" backend) jieba-data-dir))
+                          (cl-return))))))))
 
 ;;; Export function
 
@@ -244,12 +246,14 @@
   :global t
   :keymap jieba-mode-map
   :lighter " Jieba"
-  (when jieba-mode (jieba-ensure t)))
+  (when jieba-mode
+    (when jieba-build-server-automatically
+      (jieba-build-server t))
+    (jieba-ensure t)))
 
 (provide 'jieba)
 
 (cl-eval-when (load eval)
-  ;; (require 'jieba-node)
   (require 'jieba-python))
 
 ;;; jieba.el ends here

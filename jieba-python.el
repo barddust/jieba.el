@@ -28,104 +28,71 @@
 
 (require 'jieba)
 (require 'jsonrpc)
+(require 'websocket)
 
-(defun jieba--json-read-string (s)
-  (if (fboundp 'json-parse-string)
-      (json-parse-string s
-                         :object-type 'plist
-                         :false-object :json-false
-                         :null-object nil)
-    (let ((json-object-type 'plist)
-          (json-false :json-false)
-          (json-null nil))
-      (json-read-from-string s))))
+(defcustom jieba-python-cache-file (expand-file-name "jieba.cache" user-emacs-directory)
+  "Cache file to use for Python Jieba")
 
 ;;; JSONRPC setup
-
 (defvar jieba--current-python-conn nil)
 
-(defclass jieba-python-connection (jsonrpc-process-connection) ()
+(defclass jieba-python-connection (jsonrpc-connection)
+  ((ws :accessor jsonrpc-python-ws))
   "A connection based on stdio to contact with jieba server.")
+
+(cl-defmethod initialize-instance ((conn jieba-python-connection) slots)
+  (cl-call-next-method)
+  )
 
 (cl-defmethod jsonrpc-connection-send ((conn jieba-python-connection)
                                        &rest args
-                                       &key method &allow-other-keys)
-  "Override send method, because we just send JSON without HTTP headers."
+                                       &key _id method _params _result _error _partial)
+  "copy from jsonrpc-process-connection's implementation"
   (when method
     (plist-put args :method
                (cond ((keywordp method) (substring (symbol-name method) 1))
                      ((and method (symbolp method)) (symbol-name method)))))
+  ;; Adapt to python jsonrpc server
+  (if (plist-get args :params)
+      (plist-put args :params `[,(plist-get args :params)])
+    (plist-put args :params []))
   (let* ((message `(:jsonrpc "2.0" ,@args))
-         (json (jsonrpc--json-encode message)))
-    (process-send-string
-     (jsonrpc--process conn)
-     json)))
-
-(cl-defmethod initialize-instance ((conn jieba-python-connection) _slots)
-  (cl-call-next-method)
-  ;; Set a new process filter for `jieba-python-connection'.
-  ;; Because our messages don't contain HTTP headers.
-  (let ((proc (jsonrpc--process conn)))
-    (when proc
-      (set-process-filter proc #'jieba--process-filter))))
-
-(defun jieba--process-filter (proc string)
-  "Called when new data STRING has arrived for PROC."
-  (when (buffer-live-p (process-buffer proc))
-    (with-current-buffer (process-buffer proc)
-      (let ((inhibit-read-only t))
-        (goto-char (process-mark proc))
-        (insert string)
-        (set-marker (process-mark proc) (point))
-        (let ((json-message (condition-case-unless-debug oops
-                                (jieba--json-read-string string)
-                              (error
-                               (jsonrpc--warn "Invalid JSON: %s %s"
-                                              (cdr oops) (buffer-string))
-                               nil)))
-              (conn (process-get proc 'jsonrpc-connection)))
-          (when json-message
-            (with-temp-buffer
-              (jsonrpc-connection-receive conn
-                                          json-message))))))))
+         (json (json-serialize message)))
+    (websocket-send-text (jsonrpc-python-ws conn) json)))
 
 (defun jieba--python-connect ()
-  "Connect to our python jieba server."
+  "Connect to python jieba server."
+  (setq jieba--current-python-conn (jieba-python-connection))
   (let* ((name "JIEBA-SERVER")
-         (default-directory (jieba--current-dir))
          (service (alist-get 'python jieba-server-alist))
-         (conn (jieba-python-connection
-                :process (lambda ()
-                           (open-network-stream
-                            name
-                            name
-                            (car service)
-                            (cdr service)
-                            :noquery t
-                            :coding 'utf-8-emacs-unix)))))
-    ;; Ask server to load default dict.
-    (message "aaa")
-    (jsonrpc-notify conn :hello nil)
-    (setq jieba--current-python-conn conn)))
+         (uri (format "ws://%s:%d" (car service) (cdr service))))
+    (setf (jsonrpc-python-ws jieba--current-python-conn)
+        (websocket-open uri :on-message
+                                (lambda (_ws frame)
+                                  (let* ((json (with-temp-buffer
+                                                 (insert (websocket-frame-payload frame))
+                                                 (goto-char (point-min))
+                                                 (jsonrpc--json-read))))
+                                    (jsonrpc-connection-receive jieba--current-python-conn json))))))
+  (jsonrpc-request jieba--current-python-conn :hello jieba-python-cache-file))
 
 ;;; Backend implementation
+(cl-defmethod jieba--backend-available? ((_backend (eql python)))
+  (and jieba--current-python-conn
+       (websocket-openp (jsonrpc-python-ws jieba--current-python-conn))))
 
 (cl-defmethod jieba--initialize-backend ((_backend (eql python)))
   (jieba--python-connect))
 
 (cl-defmethod jieba--shutdown-backend ((_backend (eql python)))
-  (jsonrpc-shutdown jieba--current-python-conn))
-
-(cl-defmethod jieba--backend-available? ((_backend (eql python)))
-  (and (cl-typep jieba--current-python-conn 'jieba-python-connection)
-       (jsonrpc-running-p jieba--current-python-conn)))
+  (websocket-close (jsonrpc-python-ws jieba--current-python-conn)))
 
 (cl-defmethod jieba-load-dict ((_backend (eql python)) dicts)
-  (jsonrpc-async-request jieba--current-python-conn
-                         :loadDict (vconcat dicts)))
+  (jsonrpc-async-request jieba--current-python-conn :loadDict (vconcat dicts)))
 
 (cl-defmethod jieba-do-split ((_backend (eql python)) str)
   (jsonrpc-request jieba--current-python-conn :split str))
+
 
 (provide 'jieba-python)
 
