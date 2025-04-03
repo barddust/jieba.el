@@ -7,24 +7,24 @@
 1. 原项目使用 node jieba, 该项目使用 python jieba
 2. 原项目每一个 buffer 会启用一个 jieba server, 本项目只需启用一个，每个 buffer 启用的是 client.
 
+* V2
+升级到 Emacs30 后，该插件无法正常使用，TPC 连接出现问题。术业不精，于是去网上东拼西凑得到现在这个插件。相较于之前版本，该版本
+1. 使用 Websocket 与服务器连接，优点是长连接，且是高层级的 API ，写起来简单；缺点是建立连接会有一点花销，开启的时候有一点点卡顿，虽然并不影响后续。
+2. 可以自己写建构脚本来搭建服务环境，方便安装和迁移。
+
+目前暂时可以使用，有问题等有时间再修。
+
 * 安装方式
-
-** 安装依赖
-#+BEGIN_SRC sh
-pip install jieba
-#+END_SRC
-
 ** 安装jieba.el
-
-jieba.el 依赖于 jsonrpc, 而目前版本(29.2)的 Emacs 已经内置该模块
-
-把 jieba.el 目录放入emacs的 =load-path= 中, 在 =.emacs= 文件中写入
+1. 安装依赖 ~package-install RET websocket~
+2. 克隆项目到本地，把 jieba.el 目录放入emacs的 =load-path= 中
 
 #+BEGIN_SRC elisp
 (require 'jieba)
-(setq jieba-current-backend 'python)
 (jieba-mode)
 #+END_SRC
+
+** 建构脚本
 
 * 使用方式
 
@@ -33,3 +33,7 @@ jieba.el 依赖于 jsonrpc, 而目前版本(29.2)的 Emacs 已经内置该模块
 想修改的话可以改动 ~jieba-python.el~ 中的 ~jieba--python-connect~ 函数，在 ~:process~ 的 lambda 中检查，若没有启动 server，则调用子进程启动。检查方式可以用 ~ps + grep~. 我嫌麻烦懒得弄了，直接把 ~python /path/to/jieba.el/jieba-server.py &~ 写进了系统启动项里面。
 
 使用方式详见原项目的 [[https://github.com/cireu/jieba.el?tab=readme-ov-file#%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F][README]].
+
+* 致谢
+- [[https://github.com/cireu/jieba.el][GitHub - cireu/jieba.el: 在Emacs中使用jieba中文分词]]
+- [[https://zhuanlan.zhihu.com/p/646925583][42.在 Emacs 中使用 JSON-RPC]]
